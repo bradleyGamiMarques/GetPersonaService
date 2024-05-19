@@ -57,3 +57,6 @@ go.work
 
 # Ignore compiled zip binaries
 *.zip
+
+# Ignore compiled binaries
+bootstrap
