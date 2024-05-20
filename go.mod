@@ -8,7 +8,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.15
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.13.17
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.32.3
-	github.com/bradleyGamiMarques/GetPersonaServiceTypes v0.1.0
+	github.com/bradleyGamiMarques/GetPersonaServiceTypes v1.1.0
+	github.com/bradleyGamiMarques/PersonaCompendiumErrors v0.1.4
 )
 
 require (

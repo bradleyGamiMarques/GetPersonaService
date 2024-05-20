@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 
@@ -14,7 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	getpersonaservicetypes "github.com/bradleyGamiMarques/GetPersonaServiceTypes"
+	GetPersonaServiceTypes "github.com/bradleyGamiMarques/GetPersonaServiceTypes/getpersonaservice/types"
+	GetPersonaCompendiumErrors "github.com/bradleyGamiMarques/PersonaCompendiumErrors"
 )
 
 func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -23,40 +23,25 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 	personaName := request.PathParameters["personaName"]
 
 	if personaName == "" {
-		log.Println("Bad Request: personaName is required")
-		return events.APIGatewayProxyResponse{
-			StatusCode:        400,
-			MultiValueHeaders: nil,
-			Headers:           map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-			Body:              "personaName path parameter is required",
-			IsBase64Encoded:   false,
-		}, nil
+		log.Println("Bad Request: Path parameter personaName is required")
+		errorResponse := GetPersonaCompendiumErrors.BadRequestError("Path parameter personaName is required", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
 
 	// Use os.Getenv to read the environment variable
 	tableName := os.Getenv("DYNAMODB_TABLE_NAME")
 	if tableName == "" {
-		log.Println("Error: DYNAMODB_TABLE_NAME environment variable not set")
-		return events.APIGatewayProxyResponse{
-			StatusCode:        500,
-			MultiValueHeaders: nil,
-			Headers:           map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-			Body:              "Internal Server Error",
-			IsBase64Encoded:   false,
-		}, nil
+		log.Println("Internal Server Error: DYNAMODB_TABLE_NAME environment variable not set")
+		errorResponse := GetPersonaCompendiumErrors.InternalServerError("Something went wrong", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
 
 	// Load the AWS default config
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		log.Printf("Error: failed to load configuration, %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode:        500,
-			MultiValueHeaders: nil,
-			Headers:           map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-			Body:              fmt.Sprintf("failed to load configuration, %v", err),
-			IsBase64Encoded:   false,
-		}, nil
+		log.Printf("Internal Server Error: failed to load configuration, %v", err)
+		errorResponse := GetPersonaCompendiumErrors.InternalServerError("Something went wrong", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
 
 	// Create a DynamoDB client
@@ -75,50 +60,30 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 	// Retrieve the item from DynamoDB
 	result, err := svc.Query(ctx, input)
 	if err != nil {
-		log.Printf("Error: failed to query item: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode:        500,
-			MultiValueHeaders: nil,
-			Headers:           map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-			Body:              fmt.Sprintf("failed to query item: %v", err),
-			IsBase64Encoded:   false,
-		}, nil
+		log.Printf("Internal Server Error: failed to query item: %v", err)
+		errorResponse := GetPersonaCompendiumErrors.InternalServerError("Something went wrong", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
 
 	if len(result.Items) == 0 {
-		log.Printf("Warning: no persona found with name: %s", personaName)
-		return events.APIGatewayProxyResponse{
-			StatusCode:        404,
-			MultiValueHeaders: nil,
-			Headers:           map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-			Body:              fmt.Sprintf("there is no persona with that name: %s", personaName),
-			IsBase64Encoded:   false,
-		}, nil
+		log.Printf("Not Found: no persona found with name: %s", personaName)
+		errorResponse := GetPersonaCompendiumErrors.NotFoundError("There is no Persona with that name", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
 
-	var response getpersonaservicetypes.GetP3RPersonaByNameResponse
+	var response GetPersonaServiceTypes.GetP3RPersonaByNameResponse
 	err = attributevalue.UnmarshalMap(result.Items[0], &response)
 	if err != nil {
 		log.Printf("Error: failed to unmarshal response: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode:        500,
-			MultiValueHeaders: nil,
-			Headers:           map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-			Body:              fmt.Sprintf("failed to unmarshal response: %v", err),
-			IsBase64Encoded:   false,
-		}, nil
+		errorResponse := GetPersonaCompendiumErrors.InternalServerError("Something went wrong", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
 
 	responseBody, err := json.Marshal(response)
 	if err != nil {
 		log.Printf("Error: failed to marshal response: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode:        500,
-			MultiValueHeaders: nil,
-			Headers:           map[string]string{"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-			Body:              fmt.Sprintf("failed to marshal response: %v", err),
-			IsBase64Encoded:   false,
-		}, nil
+		errorResponse := GetPersonaCompendiumErrors.InternalServerError("Something went wrong", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
 
 	return events.APIGatewayProxyResponse{
