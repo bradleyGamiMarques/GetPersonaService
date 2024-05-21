@@ -26,31 +26,12 @@ data "terraform_remote_state" "persona_compendium" {
     region = var.aws_region
   }
 }
-
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_file = "${path.module}/../../cmd/lambda/GetP3RPersonaByName/bootstrap"
-  output_path = "${path.module}/../../cmd/lambda/GetP3RPersonaByName/function.zip"
+module "v1_get_p3r_persona_by_name_lambda" {
+  source                    = "./lambda"
+  dynamodb_table_name       = data.terraform_remote_state.persona_compendium.outputs.p3r_personas_table_name
+  depends_on                = [aws_cloudwatch_log_group.get_p3r_persona_by_name_log_group]
+  lambda_execution_role_arn = data.terraform_remote_state.persona_compendium.outputs.lambda_execution_role_arn
 }
-
-// Lambda Function 
-resource "aws_lambda_function" "v1_get_p3r_persona_by_name" {
-  function_name    = "v1_get_p3r_persona_by_name"
-  role             = data.terraform_remote_state.persona_compendium.outputs.lambda_execution_role_arn
-  handler          = "bootstrap"
-  runtime          = "provided.al2023"
-  filename         = data.archive_file.lambda_zip.output_path
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  memory_size      = 128
-  timeout          = 30
-  environment {
-    variables = {
-      DYNAMODB_TABLE_NAME = data.terraform_remote_state.persona_compendium.outputs.p3r_personas_table_name
-    }
-  }
-  depends_on = [aws_cloudwatch_log_group.get_p3r_persona_by_name_log_group]
-}
-
 resource "aws_cloudwatch_log_group" "get_p3r_persona_by_name_log_group" {
   name              = "get_p3r_persona_by_name_log_group_${var.stage}"
   retention_in_days = 7
@@ -156,7 +137,7 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   http_method             = aws_api_gateway_method.v1_get_p3r_persona_by_name.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.v1_get_p3r_persona_by_name.invoke_arn
+  uri                     = module.v1_get_p3r_persona_by_name_lambda.invoke_arn
 
   request_parameters = {
     "integration.request.path.personaName" = "method.request.path.personaName"
@@ -182,7 +163,7 @@ resource "aws_api_gateway_integration_response" "lambda_integration_response" {
 resource "aws_lambda_permission" "apigw_invoke" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.v1_get_p3r_persona_by_name.function_name
+  function_name = module.v1_get_p3r_persona_by_name_lambda.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "arn:aws:execute-api:${var.aws_region}:${var.aws_account_id}:${data.terraform_remote_state.persona_compendium.outputs.rest_api_id}/*/${aws_api_gateway_method.v1_get_p3r_persona_by_name.http_method}${aws_api_gateway_resource.persona_name.path}"
 }
