@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -17,8 +19,41 @@ import (
 	GetPersonaCompendiumErrors "github.com/bradleyGamiMarques/PersonaCompendiumErrors"
 )
 
-func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+// Create global variables to extract initialization logic out of the handler.
+var svc *dynamodb.Client
+var tableName string
+var initOnce sync.Once
+var initError error
 
+// initAWS returns an error or nil representing the state of the initialization
+// of the AWS SDK configuration and DynamoDB client.
+func initAWS(ctx context.Context) error {
+	var err error
+
+	tableName = os.Getenv("DYNAMODB_TABLE_NAME")
+	if tableName == "" {
+		log.Println("Internal Server Error: DYNAMODB_TABLE_NAME environment variable not set")
+		return fmt.Errorf("DYNAMODB_TABLE_NAME environment variable not set")
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		log.Printf("Internal Server Error: failed to load configuration: %v\n", err)
+		return fmt.Errorf("failed to load configuration: %v", err)
+	}
+
+	svc = dynamodb.NewFromConfig(cfg)
+	return nil
+}
+func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	initOnce.Do(func() {
+		initError = initAWS(ctx)
+	})
+	if initError != nil {
+		log.Printf("Internal Server Error: %v", initError)
+		errorResponse := GetPersonaCompendiumErrors.InternalServerError("Something went wrong", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
+	}
 	// Extract the persona name from the path parameters
 	personaName := request.PathParameters["personaName"]
 
@@ -27,25 +62,6 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 		errorResponse := GetPersonaCompendiumErrors.BadRequestError("Path parameter personaName is required", request.Path)
 		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
-
-	// Use os.Getenv to read the environment variable
-	tableName := os.Getenv("DYNAMODB_TABLE_NAME")
-	if tableName == "" {
-		log.Println("Internal Server Error: DYNAMODB_TABLE_NAME environment variable not set")
-		errorResponse := GetPersonaCompendiumErrors.InternalServerError("Something went wrong", request.Path)
-		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
-	}
-
-	// Load the AWS default config
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		log.Printf("Internal Server Error: failed to load configuration, %v", err)
-		errorResponse := GetPersonaCompendiumErrors.InternalServerError("Something went wrong", request.Path)
-		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
-	}
-
-	// Create a DynamoDB client
-	svc := dynamodb.NewFromConfig(cfg)
 
 	// Prepare the input for the query
 	input := &dynamodb.QueryInput{
