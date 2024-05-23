@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -45,6 +48,19 @@ func initAWS(ctx context.Context) error {
 	svc = dynamodb.NewFromConfig(cfg)
 	return nil
 }
+
+// sanitizeInput validates and sanitizes the input to prevent security issues
+func sanitizeInput(input string) (string, error) {
+	// Trim leading and trailing spaces
+	trimmedInput := strings.TrimSpace(input)
+	// Disallowing special characters except for hyphens, letters, and spaces
+	re := regexp.MustCompile(`^[-a-zA-Z ]+$`)
+	if !re.MatchString(trimmedInput) {
+		return "", fmt.Errorf("invalid input: %s", input)
+	}
+	return trimmedInput, nil
+}
+
 func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	initOnce.Do(func() {
 		initError = initAWS(ctx)
@@ -54,10 +70,26 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 		errorResponse := GetPersonaCompendiumErrors.InternalServerError("Something went wrong", request.Path)
 		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
+
 	// Extract the persona name from the path parameters
 	personaName := request.PathParameters["personaName"]
+	decodedPersonaName, err := url.PathUnescape(personaName)
 
-	if personaName == "" {
+	if err != nil {
+		log.Printf("Bad Request: failed to decode persona name: %v\n", err)
+		errorResponse := GetPersonaCompendiumErrors.BadRequestError("Invalid persona name", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
+	}
+
+	// Trim and sanitize the input
+	sanitizedPersonaName, err := sanitizeInput(decodedPersonaName)
+	if err != nil {
+		log.Printf("Bad Request: %v", err)
+		errorResponse := GetPersonaCompendiumErrors.BadRequestError("Invalid persona name", request.Path)
+		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
+	}
+
+	if sanitizedPersonaName == "" {
 		log.Println("Bad Request: Path parameter personaName is required")
 		errorResponse := GetPersonaCompendiumErrors.BadRequestError("Path parameter personaName is required", request.Path)
 		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
@@ -69,7 +101,7 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 		IndexName:              aws.String("PersonaIndex"),
 		KeyConditionExpression: aws.String("PersonaName = :personaName"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":personaName": &types.AttributeValueMemberS{Value: personaName},
+			":personaName": &types.AttributeValueMemberS{Value: sanitizedPersonaName},
 		},
 	}
 
@@ -82,7 +114,7 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 	}
 
 	if len(result.Items) == 0 {
-		log.Printf("Not Found: no persona found with name: %s", personaName)
+		log.Printf("Not Found: there is no Persona with that name: %s", personaName)
 		errorResponse := GetPersonaCompendiumErrors.NotFoundError("There is no Persona with that name", request.Path)
 		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
