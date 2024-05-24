@@ -43,3 +43,12 @@ variable "v1_get_p3r_persona_by_name_lambda_function_name" {
   description = "Function name for v1_get_p3r_persona_by_name_lambda"
   type        = string
 }
+variable "v1_get_p3r_personas_by_arcana_lambda_invoke_arn" {
+  description = "Invocation ARN for v1_get_p3r_personas_by_arcana_lambda"
+  type        = string
+}
+
+variable "v1_get_p3r_personas_by_arcana_lambda_function_name" {
+  description = "Function name for v1_get_p3r_personas_by_arcana_lambda"
+  type        = string
+}

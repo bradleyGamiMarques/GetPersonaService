@@ -23,6 +23,18 @@ resource "aws_api_gateway_resource" "persona_name" {
   path_part   = "{personaName}"
 }
 
+resource "aws_api_gateway_resource" "arcana" {
+  rest_api_id = var.rest_api_id
+  parent_id   = aws_api_gateway_resource.p3r.id
+  path_part   = "{arcana}"
+}
+
+resource "aws_api_gateway_resource" "personas" {
+  rest_api_id = var.rest_api_id
+  parent_id   = aws_api_gateway_resource.arcana.id
+  path_part   = "personas"
+}
+
 // API Gateway Methods
 resource "aws_api_gateway_method" "v1_get_p3r_persona_by_name" {
   rest_api_id   = var.rest_api_id
@@ -34,21 +46,19 @@ resource "aws_api_gateway_method" "v1_get_p3r_persona_by_name" {
     "method.request.path.personaName" = true
   }
 }
+resource "aws_api_gateway_method" "v1_get_p3r_personas_by_arcana" {
+  rest_api_id   = var.rest_api_id
+  resource_id   = aws_api_gateway_resource.personas.id
+  http_method   = "GET"
+  authorization = "NONE"
 
-resource "aws_api_gateway_method_settings" "path_specific" {
-  rest_api_id = var.rest_api_id
-  stage_name  = aws_api_gateway_stage.persona_compendium.stage_name
-  method_path = "${trimprefix(aws_api_gateway_resource.persona_name.path, "/")}/GET"
-
-  settings {
-    logging_level      = "INFO"
-    metrics_enabled    = true
-    data_trace_enabled = false
+  request_parameters = {
+    "method.request.path.arcana" = true
   }
 }
 
 // API Gateway Integrations
-resource "aws_api_gateway_integration" "lambda_integration" {
+resource "aws_api_gateway_integration" "v1_get_p3r_persona_by_name_lambda_integration" {
   rest_api_id             = var.rest_api_id
   resource_id             = aws_api_gateway_resource.persona_name.id
   http_method             = aws_api_gateway_method.v1_get_p3r_persona_by_name.http_method
@@ -60,13 +70,32 @@ resource "aws_api_gateway_integration" "lambda_integration" {
     "integration.request.path.personaName" = "method.request.path.personaName"
   }
 }
+resource "aws_api_gateway_integration" "v1_get_p3r_personas_by_arcana_lambda_integration" {
+  rest_api_id             = var.rest_api_id
+  resource_id             = aws_api_gateway_resource.personas.id
+  http_method             = aws_api_gateway_method.v1_get_p3r_personas_by_arcana.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.v1_get_p3r_personas_by_arcana_lambda_invoke_arn
 
-resource "aws_lambda_permission" "apigw_invoke" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  request_parameters = {
+    "integration.request.path.personaName" = "method.request.path.arcana"
+  }
+}
+
+resource "aws_lambda_permission" "v1_get_p3r_persona_by_name_apigw_invoke" {
+  statement_id  = "AllowAPIGatewayInvoke-get_p3r_persona_by_name"
   action        = "lambda:InvokeFunction"
   function_name = var.v1_get_p3r_persona_by_name_lambda_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "arn:aws:execute-api:${var.aws_region}:${var.aws_account_id}:${var.rest_api_id}/*/${aws_api_gateway_method.v1_get_p3r_persona_by_name.http_method}${aws_api_gateway_resource.persona_name.path}"
+}
+resource "aws_lambda_permission" "v1_get_p3r_personas_by_arcana_apigw_invoke" {
+  statement_id  = "AllowAPIGatewayInvoke-get_p3r_personas_by_arcana"
+  action        = "lambda:InvokeFunction"
+  function_name = var.v1_get_p3r_personas_by_arcana_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "arn:aws:execute-api:${var.aws_region}:${var.aws_account_id}:${var.rest_api_id}/*/${aws_api_gateway_method.v1_get_p3r_personas_by_arcana.http_method}${aws_api_gateway_resource.personas.path}"
 }
 
 // API Gateway dev stage
@@ -74,20 +103,33 @@ resource "aws_api_gateway_stage" "persona_compendium" {
   deployment_id = aws_api_gateway_deployment.dev_deployment.id
   rest_api_id   = var.rest_api_id
   stage_name    = var.stage
-  access_log_settings {
-    destination_arn = var.get_p3r_persona_by_name_log_group_arn
-    format          = "$context.requestId $context.identity.sourceIp $context.identity.userAgent $context.requestTime $context.httpMethod $context.resourcePath $context.status $context.error.message $context.integration.error"
-
-  }
 }
 
 // API Gateway dev deployment
 resource "aws_api_gateway_deployment" "dev_deployment" {
   depends_on = [
-    aws_api_gateway_integration.lambda_integration,
-    aws_api_gateway_method.v1_get_p3r_persona_by_name
+    aws_api_gateway_integration.v1_get_p3r_persona_by_name_lambda_integration,
+    aws_api_gateway_integration.v1_get_p3r_personas_by_arcana_lambda_integration,
+    aws_api_gateway_method.v1_get_p3r_persona_by_name,
+    aws_api_gateway_method.v1_get_p3r_personas_by_arcana
   ]
   rest_api_id = var.rest_api_id
+
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_integration.v1_get_p3r_persona_by_name_lambda_integration,
+      aws_api_gateway_integration.v1_get_p3r_personas_by_arcana_lambda_integration,
+      aws_api_gateway_method.v1_get_p3r_persona_by_name,
+      aws_api_gateway_method.v1_get_p3r_personas_by_arcana,
+      aws_api_gateway_resource.v1,
+      aws_api_gateway_resource.p3r,
+      aws_api_gateway_resource.persona,
+      aws_api_gateway_resource.persona_name,
+      aws_api_gateway_resource.arcana,
+      aws_api_gateway_resource.personas,
+
+    ]))
+  }
   lifecycle {
     create_before_destroy = true
   }

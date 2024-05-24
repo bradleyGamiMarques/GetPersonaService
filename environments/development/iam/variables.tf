@@ -13,6 +13,10 @@ variable "get_p3r_persona_by_name_log_group_name" {
   default = "Name of log group for get_p3r_persona_by_name_lambda"
   type    = string
 }
+variable "get_p3r_personas_by_arcana_log_group_name" {
+  default = "Name of log group for get_p3r_personas_by_arcana_lambda"
+  type    = string
+}
 
 variable "lambda_execution_role_id" {
   description = "ID of lambda execution role"

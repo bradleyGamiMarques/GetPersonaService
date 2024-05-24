@@ -27,31 +27,39 @@ data "terraform_remote_state" "persona_compendium" {
   }
 }
 module "api_gateway_configuration" {
-  source                                          = "./api_gateway"
-  aws_account_id                                  = var.aws_account_id
-  aws_region                                      = var.aws_region
-  get_p3r_persona_by_name_log_group_arn           = aws_cloudwatch_log_group.get_p3r_persona_by_name_log_group.arn
-  lambda_execution_role_id                        = data.terraform_remote_state.persona_compendium.outputs.lambda_execution_role_id
-  rest_api_id                                     = data.terraform_remote_state.persona_compendium.outputs.rest_api_id
-  root_resource_id                                = data.terraform_remote_state.persona_compendium.outputs.api_gateway_root_resource_id
-  stage                                           = var.stage
-  v1_get_p3r_persona_by_name_lambda_invoke_arn    = module.v1_get_p3r_persona_by_name_lambda.invoke_arn
-  v1_get_p3r_persona_by_name_lambda_function_name = module.v1_get_p3r_persona_by_name_lambda.function_name
+  source                                             = "./api_gateway"
+  aws_account_id                                     = var.aws_account_id
+  aws_region                                         = var.aws_region
+  get_p3r_persona_by_name_log_group_arn              = aws_cloudwatch_log_group.get_p3r_persona_by_name_log_group.arn
+  lambda_execution_role_id                           = data.terraform_remote_state.persona_compendium.outputs.lambda_execution_role_id
+  rest_api_id                                        = data.terraform_remote_state.persona_compendium.outputs.rest_api_id
+  root_resource_id                                   = data.terraform_remote_state.persona_compendium.outputs.api_gateway_root_resource_id
+  stage                                              = var.stage
+  v1_get_p3r_persona_by_name_lambda_invoke_arn       = module.lambdas.v1_get_p3r_persona_by_name_invoke_arn
+  v1_get_p3r_persona_by_name_lambda_function_name    = module.lambdas.v1_get_p3r_persona_by_name_function_name
+  v1_get_p3r_personas_by_arcana_lambda_invoke_arn    = module.lambdas.v1_get_p3r_personas_by_arcana_invoke_arn
+  v1_get_p3r_personas_by_arcana_lambda_function_name = module.lambdas.v1_get_p3r_personas_by_arcana_function_name
 }
-module "v1_get_p3r_persona_by_name_lambda" {
+module "lambdas" {
   source                    = "./lambda"
-  depends_on                = [aws_cloudwatch_log_group.get_p3r_persona_by_name_log_group]
+  depends_on                = [aws_cloudwatch_log_group.get_p3r_persona_by_name_log_group, aws_cloudwatch_log_group.get_p3r_personas_by_arcana_log_group]
   dynamodb_table_name       = data.terraform_remote_state.persona_compendium.outputs.p3r_personas_table_name
   lambda_execution_role_arn = data.terraform_remote_state.persona_compendium.outputs.lambda_execution_role_arn
 }
 module "iam_configuration" {
-  source                   = "./iam"
-  aws_account_id           = var.aws_account_id
-  lambda_execution_role_id = data.terraform_remote_state.persona_compendium.outputs.lambda_execution_role_id
-  p3r_personas_table_name  = data.terraform_remote_state.persona_compendium.outputs.p3r_personas_table_name
-  stage                    = var.stage
+  source                                    = "./iam"
+  aws_account_id                            = var.aws_account_id
+  lambda_execution_role_id                  = data.terraform_remote_state.persona_compendium.outputs.lambda_execution_role_id
+  p3r_personas_table_name                   = data.terraform_remote_state.persona_compendium.outputs.p3r_personas_table_name
+  stage                                     = var.stage
+  get_p3r_persona_by_name_log_group_name    = aws_cloudwatch_log_group.get_p3r_persona_by_name_log_group.name
+  get_p3r_personas_by_arcana_log_group_name = aws_cloudwatch_log_group.get_p3r_personas_by_arcana_log_group.name
 }
 resource "aws_cloudwatch_log_group" "get_p3r_persona_by_name_log_group" {
   name              = "get_p3r_persona_by_name_log_group_${var.stage}"
+  retention_in_days = 7
+}
+resource "aws_cloudwatch_log_group" "get_p3r_personas_by_arcana_log_group" {
+  name              = "v1_get_p3r_personas_by_arcana_log_group_${var.stage}"
   retention_in_days = 7
 }
