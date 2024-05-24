@@ -18,8 +18,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	GetPersonaServiceTypes "github.com/bradleyGamiMarques/GetPersonaServiceTypes/getpersonaservice/types"
 	GetPersonaCompendiumErrors "github.com/bradleyGamiMarques/PersonaCompendiumErrors"
+	GetPersonaServiceTypes "github.com/bradleyGamiMarques/get-persona-service-types"
 )
 
 // Create global variables to extract initialization logic out of the handler.
@@ -114,7 +114,7 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 	}
 
 	if len(result.Items) == 0 {
-		log.Printf("Not Found: there is no Persona with that name: %s", personaName)
+		log.Printf("Not Found: there is no Persona with that name: %s", sanitizedPersonaName)
 		errorResponse := GetPersonaCompendiumErrors.NotFoundError("There is no Persona with that name", request.Path)
 		return GetPersonaCompendiumErrors.JSONResponse(errorResponse)
 	}
